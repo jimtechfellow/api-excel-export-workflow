@@ -1,511 +1,297 @@
-# request_ex 项目演化说明（README 封存版）
+# API Excel Export Workflow
 
-## 1. 项目定位
+A practical Python workflow for authenticated API data extraction, transformation, and Excel delivery.
 
-这个小工具的目标并不只是“把一个 API 请求结果导出成 Excel”。
+## Overview
 
-它真正完成的是一条**可解释、可扩展、可封存**的微型数据处理流水线：
+This project demonstrates how a repetitive API-based data handling task can be turned into a small, reliable, delivery-oriented workflow.
 
-**网络请求 → JSON 校验 → 字段提取 → 业务过滤 → 排序整理 → Excel 导出 → 执行证据输出**
+The original need behind this project was straightforward:
+- authenticate against an API
+- keep the session usable
+- request structured data
+- filter and organize the response
+- export business-friendly Excel output
+- preserve enough evidence to explain success or failure
 
-在 Sprint 3 的技术补全过程中，这个项目从一个“能跑的小脚本”，逐步演化成一个具备明确阶段边界、统一返回协议、可追踪执行证据、便于后续改造成可交付工具的雏形。
+Instead of positioning this as a large data platform or a generic ETL framework, this repository focuses on a narrow and practical workflow:
+- authenticated API access
+- lightweight session and token handling
+- structured field extraction
+- filtering and sorting
+- Excel-oriented delivery
+- reproducible failure reporting
 
----
+## What Problem It Solves
 
-## 2. 版本范围说明
+Many real operational tasks still depend on data that lives behind APIs, but the people who need that data often work in Excel, not raw JSON.
 
-严格来说，这个项目当前一共看到 **9 个版本**：
+That creates a common gap:
+- API responses are technical
+- business users want spreadsheet output
+- authentication and session handling add friction
+- manual copy-paste is slow and error-prone
+- failures are often hard to explain clearly
 
-- `request_ex.py`：初始原型
-- `request_ex-D2.py` 到 `request_ex-D9.py`：8 个正式迭代版本
+This project demonstrates a practical solution:
+a small Python workflow that turns authenticated API responses into structured, business-friendly Excel output.
 
-如果按“八个文件”的说法，通常是指 **D2 ~ D9 这 8 个技术补全版本**。
+## Workflow Scope
 
-因此，这份说明采用下面的视角：
+At a high level, the workflow is:
 
-- `request_ex.py` 作为**起点/前史**
-- `D2 ~ D9` 作为**正式演化主线**
+1. Authenticate with the target service
+2. Establish a usable session or token state
+3. Request structured data from an API
+4. validate the response shape
+5. Extract required business fields
+6. Apply filtering and sorting rules
+7. Export clean Excel output
+8. Return structured execution evidence
 
----
+The emphasis is not on building a generalized data pipeline platform.
+The emphasis is on solving a fixed-scope business workflow in a controlled and explainable way.
 
-## 3. 一句话总结整个演化方向
+## Design Principles
 
-整个演化并不是在堆功能，而是在持续完成下面 5 个转变：
+### 1. Delivery-Oriented Output
 
-1. **从一次性脚本，转向分阶段流水线**
-2. **从异常驱动，转向结果对象驱动**
-3. **从“拿到数据就直接写文件”，转向“先整理数据，再进入输出层”**
-4. **从 CSV 原型，转向更接近客户交付物的 Excel 输出**
-5. **从“程序跑完就算结束”，转向“程序必须给出证据链”**
+This project is designed around what a client can actually use:
+- spreadsheet-ready output
+- clear field mapping
+- predictable workflow stages
+- understandable failure reasons
 
-这也是这个项目最有价值的部分。
+The goal is not just “fetch some JSON.”
+The goal is to produce a usable deliverable.
 
----
+### 2. Bounded Session Handling
 
-## 4. 演化总览表
+The workflow uses lightweight authentication and session management rather than an overbuilt identity architecture.
 
-| 版本 | 核心变化 | 本质意义 |
-|---|---|---|
-| 初版 `request_ex.py` | 直接请求 API，提取字段，写入 CSV | 证明最小闭环可跑通 |
-| `D2` | 引入统一 `Result` 风格字典 | 开始从“脚本”转向“流程” |
-| `D3` | 拆出 `extract_rows()`，区分 `data` 与 `evidence` | 建立真正的分阶段数据流 |
-| `D4` | 从 CSV 升级到 Excel（`openpyxl`） | 输出更接近实际交付物 |
-| `D5` | Excel 增加表头筛选（AutoFilter） | 开始考虑交付后的可用性 |
-| `D6` | 新增 `filter_rows()`，按 website 非空过滤 | 引入业务规则层 |
-| `D7` | 新增 `sort_rows()`，按 name 排序 | 引入整理层/展示层 |
-| `D8` | 把过滤与排序参数提升为顶层配置 | 从写死逻辑走向轻配置化 |
-| `D9` | 增强停止信息与最终执行总结 | 形成完整证据链输出 |
+The intended scope includes:
+- session reuse where appropriate
+- token extraction from login responses
+- token injection into later requests
+- bounded retry handling for invalid or expired session state
 
----
+This keeps the demo commercially relevant without introducing unnecessary protocol complexity.
 
-## 5. 前史：初版 `request_ex.py`
+### 3. Structured Failure Visibility
 
-初版已经完成了一个完整的最小闭环：
+A useful automation workflow must explain both success and failure.
 
-- 调用 `requests.get()` 获取用户列表
-- 校验返回值是否为 JSON list
-- 提取 `id/name/email/company_name`
-- 写入 `users.csv`
-- 在 `main()` 中做统一异常收口
+This project is designed to expose:
+- which stage failed
+- why it failed
+- what request/response evidence is available
+- what output was or was not produced
 
-这个版本的价值不是“功能多”，而是它已经证明：
+That makes the workflow easier to validate, debug, and deliver.
 
-- 请求链路是通的
-- JSON 结构理解是对的
-- 扁平化字段提取是可行的
-- 文件输出是可落地的
+## What It Does
 
-但它也有明显局限：
+The core workflow can cover the following steps:
 
-- 流程是“线性脚本思维”
-- `extract_rows()` 直接返回 `(rows, skipped)` 元组，适合小脚本，不适合继续扩展
-- 异常处理集中在 `main()`，阶段边界不够清晰
-- 输出仍是 CSV，更偏开发验证，不够像正式交付物
+- send an authenticated login request
+- extract token or session information from the response
+- inject authentication state into follow-up requests
+- fetch target business data
+- validate the returned JSON structure
+- flatten or map required fields
+- apply business filters
+- sort or normalize rows
+- export the final result to Excel
 
-因此，它更像一个 **PoC（proof of concept）原型**，不是最终结构。
+Depending on the public demo layout, the repository may also include:
+- a Postman collection for quick API replay
+- a minimal pytest check for response validation
+- a bug reproduction note for QA-style delivery evidence
+
+## Authentication and Session Flow
+
+This demo is intentionally centered on practical API authentication patterns rather than advanced identity systems.
+
+Typical supported ideas include:
+- `requests.Session()` usage
+- cookie persistence within a bounded workflow
+- token extraction from login responses
+- token injection into headers or follow-up requests
+- minimal retry logic for expired authentication state
+
+This repository is **not** intended as a showcase for:
+- full OAuth platform design
+- complex SSO architecture
+- PKCE implementation
+- enterprise identity orchestration
+
+The purpose is to demonstrate useful session-aware workflow automation for small and medium delivery scenarios.
+
+## Export Flow
+
+The output side of the project is just as important as the request side.
+
+A typical export path is:
+
+1. receive JSON response data
+2. validate the minimum expected structure
+3. extract relevant business fields
+4. normalize records into tabular rows
+5. apply filtering or sorting rules
+6. write a clean Excel file
+7. report execution status and evidence
 
----
+This makes the workflow suitable for business users who need clean output rather than raw API payloads.
 
-## 6. D2：第一次结构化——统一 Result 对象
+## Example Input and Output
 
-`D2` 的关键变化，是开始把“函数执行结果”统一成同一种格式：
+### Example Input
+The public demo may include:
+- a sample API response in JSON
+- a sample configuration or request parameter set
+- a minimal authentication flow example
 
-```python
-{
-    "ok": bool,
-    "stage": str,
-    "reason": str,
-    "evidence": any
-}
-```
+### Example Output
+The public demo may include:
+- an exported `.xlsx` file
+- terminal output showing execution stages
+- screenshots of the final Excel result
 
-这一改动非常关键，因为它意味着项目开始摆脱“函数成功就直接返回数据，失败就抛异常”的松散写法，转向：
+The purpose of these examples is to show the complete path from API response to client-friendly output.
 
-- 每个阶段都能说明自己成功还是失败
-- 每个阶段都能说明失败原因
-- 每个阶段都能附带证据
+## Acceptance Criteria
 
-这是后面整个架构能持续扩展的基础。
+A successful run should satisfy the following:
 
-不过 `D2` 还有一个明显问题：
+- authentication succeeds within the intended bounded workflow
+- the target API response is retrieved successfully
+- the response structure matches the expected minimum contract
+- required business fields are extracted correctly
+- the final Excel file is generated successfully
+- the workflow returns understandable execution feedback
 
-- `fetch_users()` 把原始 API 数据直接塞进了 `evidence`
+If the run fails, the project should still help explain:
+- which stage failed
+- whether the problem was auth, response shape, transformation, or export
+- what evidence is available for troubleshooting
 
-这会导致“证据”和“业务数据”混在一起。对小脚本还能忍，但对可维护流水线来说是不干净的。
+## Failure Handling and Evidence
+
+Typical failure areas may include:
+- login failure
+- invalid credentials
+- expired or missing token
+- cookie/session loss
+- unexpected response shape
+- missing required fields
+- Excel export failure
+- partial output due to transformation issues
+
+Evidence may include:
+- structured stage/reason output
+- request and response notes
+- sample response snapshots
+- terminal logs
+- validation results
+- bug reproduction notes where applicable
 
-所以 `D2` 的意义是：
+This matters because practical API automation is not only about fetching data.
+It is also about making failures understandable and reproducible.
 
-**先统一协议，再暴露设计缺陷。**
+## Why This Project Is Commercially Relevant
 
----
+A large number of small and medium business tasks still follow this pattern:
 
-## 7. D3：真正形成阶段流水线——data 与 evidence 分离
+- data lives behind an API
+- users want Excel
+- auth/session logic is annoying but necessary
+- manual handling wastes time
+- internal staff need a repeatable tool, not a large platform
 
-`D3` 是这条演化线里很关键的一步。
+This project is commercially relevant because it demonstrates:
+- authenticated API workflow handling
+- spreadsheet-oriented delivery
+- practical Python automation
+- bounded session management
+- QA-minded validation and evidence
+- fixed-scope utility design instead of overengineering
 
-它做了两件本质性升级：
+## Tech Stack
 
-### 7.1 拆出独立的 `extract_rows()` 阶段
+- Python
+- `requests`
+- `openpyxl`
+- optional `pytest`
+- optional Postman collection for replay/demo
 
-从这一版开始，流程被明确拆成：
+## Repository Structure
 
-1. `fetch_users()`：只负责拿原始数据
-2. `extract_rows()`：只负责字段扁平化
-3. `save_rows_to_csv()`：只负责写文件
+Typical public-demo contents may include:
 
-这一步把“获取、转换、输出”三个动作正式解耦了。
+- `src/`  
+  Core Python workflow logic
 
-### 7.2 正式区分 `data` 与 `evidence`
+- `sample_response/`  
+  Sanitized JSON example response
 
-`D3` 引入了新的 Result 结构：
+- `output_example/`  
+  Example exported Excel file
 
-```python
-{
-    "ok": bool,
-    "stage": str,
-    "reason": str,
-    "evidence": any,
-    "data": any
-}
-```
+- `screenshots/`  
+  Terminal run and Excel output screenshots
 
-这里的核心思想是：
+- `requirements.txt`  
+  Minimal dependency list
 
-- `data`：传给下一个阶段继续处理的真实数据
-- `evidence`：只用于说明当前阶段发生了什么，例如数量、跳过数、实际类型等
+- optional Postman collection  
+  Replayable request example
 
-这一步意义非常大，因为它让这套代码开始具备“管道化”特征。
+- optional QA note or bug reproduction markdown  
+  Delivery-style validation evidence
 
-从这一刻起，这就不再只是一个导出脚本，而是一条微型 ETL 流水线。
+## Known Constraints
 
----
+This is intentionally **not**:
+- a generalized ETL platform
+- a data warehouse ingestion system
+- a streaming pipeline
+- a complex identity management showcase
+- a universal API client generator
 
-## 8. D4：输出层升级——从 CSV 转向 Excel
+The demo assumes:
+- a fixed-scope API workflow
+- known target fields
+- a bounded authentication pattern
+- a defined output format
+- practical delivery needs over abstraction
 
-`D4` 的最大变化是：
+Those constraints are intentional.
+They keep the project useful, understandable, and commercially realistic.
 
-- 不再输出 CSV
-- 改为使用 `openpyxl` 生成 `users.xlsx`
-- 引入 `HEADERS` 常量控制列顺序
-- 新增 `save_rows_to_excel()`
+## Suitable Use Cases
 
-这一步的本质并不是“文件后缀变了”。
+This kind of workflow is a good fit for:
+- API data extraction to Excel
+- recurring reporting tasks
+- back-office data preparation
+- lightweight authenticated integrations
+- QA-oriented API validation utilities
+- small internal tools for business users
 
-它真正代表的是：
+## Portfolio Relevance
 
-### 8.1 输出目标从“程序员验证”转向“用户交付”
+This repository is part of a broader portfolio focused on:
+- practical Python automation
+- Windows and workflow automation
+- API-driven business tooling
+- Excel and CSV delivery workflows
+- structured, evidence-driven implementation for repetitive tasks
 
-CSV 更像中间产物。
-Excel 更像最终交付件。
+## Notes
 
-### 8.2 输出结构开始被显式控制
+This repository is published as a portfolio/demo project.
 
-有了 `HEADERS`，列顺序不再隐含在字典写入逻辑里，而是进入了顶层配置区。
+Its purpose is to demonstrate how an authenticated API workflow can be turned into a bounded, client-friendly engineering deliverable with usable spreadsheet output, controlled session handling, and clear failure visibility.
 
-这意味着后续要：
-
-- 改字段顺序
-- 减字段
-- 加字段
-- 输出不同工作表结构
-
-都会更容易扩展。
-
-所以 `D4` 是一次非常实际的“交付层升级”。
-
----
-
-## 9. D5：第一次考虑用户操作体验——加 AutoFilter
-
-`D5` 的功能变化不大，只增加了一项：
-
-- Excel 首行启用 `AutoFilter`
-
-但这一步的思路很成熟，因为它说明项目不再只关心“文件有没有生成”，而开始关心：
-
-- 用户拿到 Excel 后是否方便筛选
-- 结果表是否具备最基础的分析可用性
-
-换句话说，`D5` 开始出现明显的“交付意识”：
-
-**脚本的完成，不等于用户工作的完成。**
-
-只有当输出文件能被方便地继续使用，这个工具才更接近真实工作场景。
-
----
-
-## 10. D6：引入业务规则层——filter_rows()
-
-`D6` 新增了 `filter_rows()`，规则很简单：
-
-- 只保留 `website` 非空的记录
-
-这一步的重要性不在于过滤条件本身，而在于项目从这里开始正式拥有了“业务规则层”。
-
-之前的流程是：
-
-- 拿数据
-- 整理字段
-- 直接输出
-
-从 `D6` 开始，变成：
-
-- 拿数据
-- 整理字段
-- **按业务规则过滤**
-- 再输出
-
-这代表项目已经不只是做“技术搬运”，而是在做“数据选择”。
-
-这一步非常接近真实客户需求，因为实际项目里经常不是“把所有数据吐出来”，而是：
-
-- 只要有效记录
-- 只要满足某些字段的记录
-- 只导出特定范围的数据
-
-因此 `D6` 是从“导出工具”向“轻量数据处理工具”迈出的第一步。
-
----
-
-## 11. D7：引入整理层——sort_rows()
-
-`D7` 增加了 `sort_rows()`：
-
-- 按 `name` 升序排序
-- 使用大小写无关的排序方式
-
-这一步代表项目开始进入“输出结果整理”阶段。
-
-过滤解决的是：**哪些数据该留下来**。
-排序解决的是：**留下来的数据如何更适合阅读和使用**。
-
-因此流程进一步变成：
-
-- Fetch
-- Extract
-- Filter
-- Sort
-- Save
-
-这时整个程序的结构已经非常清楚，形成了一个标准的小型数据流水线骨架。
-
----
-
-## 12. D8：从写死逻辑走向配置化
-
-`D8` 的升级很重要，因为它不是再加一个处理步骤，而是开始让已有步骤“可配置”。
-
-新增顶层配置：
-
-```python
-FILTER_REQUIRE_WEBSITE = True
-SORT_BY = "name"
-SORT_ORDER = "asc"
-```
-
-同时：
-
-- `filter_rows()` 根据 `FILTER_REQUIRE_WEBSITE` 决定是否启用过滤
-- `sort_rows()` 开始校验 `SORT_BY` 和 `SORT_ORDER`
-- 当前版本虽然只支持 `name + asc`，但已经显式写出了“支持范围”和“拒绝条件”
-
-这一步的价值在于：
-
-### 12.1 逻辑从代码内部，提升到配置层
-
-这让后续做下面这些事情会更自然：
-
-- 打开/关闭某一步
-- 切换不同排序策略
-- 让用户以后从命令行或配置文件传参
-
-### 12.2 系统开始具备“边界声明”
-
-`D8` 没有假装自己支持全部排序，而是明确说：
-
-- 现在只支持 `name`
-- 现在只支持 `asc`
-- 其他情况明确报不支持
-
-这是很好的工程习惯。
-
-它代表这套代码在向“可扩展”，而不是“假万能”前进。
-
----
-
-## 13. D9：形成完整证据链——停止原因 + 最终执行摘要
-
-`D9` 没有再改变数据处理逻辑，而是重点强化了**执行可解释性**。
-
-主要增强有两类：
-
-### 13.1 每个失败点都输出统一 STOPPED 区块
-
-当任一阶段失败时，不再只是简单打印一句“Stopping because ...”，而是会输出：
-
-- `stage`
-- `reason`
-- `evidence`
-
-这意味着：
-
-- 用户知道失败在哪一层
-- 用户知道失败原因
-- 用户知道相关证据
-
-### 13.2 成功时输出最终 Execution Summary
-
-程序结束时，会汇总各阶段证据，例如：
-
-- fetched_count
-- extracted_count
-- filtered_count
-- removed_count
-- sorted_count
-- output_file
-
-这一步让整个工具第一次具备了真正的**运行报告**雏形。
-
-它的价值非常适合 GitHub README 封存，因为它说明：
-
-这个项目已经不是“黑箱跑一下”，而是可以给出完整执行轨迹。
-
----
-
-## 14. 整体设计思路复盘
-
-如果把这 8 个正式版本看成一个持续迭代过程，那么它背后的设计思路可以概括成下面 4 条主线。
-
-### 14.1 主线一：先打通最小闭环，再做结构化
-
-不是一开始就追求复杂架构，而是先用最小原型证明：
-
-- API 能拿到
-- 数据能读懂
-- 文件能输出
-
-确认闭环后，再逐步结构化。
-
-这条路线很务实，也符合真实开发节奏。
-
-### 14.2 主线二：优先建立阶段边界，而不是急着加功能
-
-最关键的升级不是 AutoFilter，也不是排序，而是：
-
-- `fetch`
-- `extract`
-- `filter`
-- `sort`
-- `save`
-
-这些阶段边界被一个一个独立出来。
-
-因为只有边界清楚，功能增加才不会把程序重新拖回一坨脚本。
-
-### 14.3 主线三：数据与证据分离
-
-这是整个项目里最像“工程意识”的一点。
-
-- `data` 负责向后流转
-- `evidence` 负责解释当前阶段
-
-这个设计使得程序既能继续跑，又能留下可检查的痕迹。
-
-这也是后续做日志、审计、错误报告、CLI 输出、API 响应包装时最值得保留的思路。
-
-### 14.4 主线四：从开发者视角，逐步走向交付视角
-
-演化后半段的变化很有代表性：
-
-- CSV → Excel
-- 加 AutoFilter
-- 增加 filter
-- 增加 sort
-- 增加 execution summary
-
-这些变化都说明关注点已经不再是“代码能跑”，而是：
-
-- 用户拿到结果是否好用
-- 结果是否像一个正式交付物
-- 出问题时是否方便解释
-
-这正是技术补全的真正意义。
-
----
-
-## 15. 最终 D9 的架构形态
-
-截至 `D9`，整个程序已经形成了下面这条清晰流水线：
-
-```text
-fetch_users
-  -> extract_rows
-  -> filter_rows
-  -> sort_rows
-  -> save_rows_to_excel
-```
-
-并由 `main()` 统一负责编排：
-
-- 调用每一阶段
-- 打印阶段结果
-- 在失败时立即停止
-- 在成功时输出总摘要
-
-这已经是一个非常完整的小型工具架构。
-
-虽然它还不大，但已经具备了继续演进的正确骨架。
-
----
-
-## 16. 这个项目对后续商业化/作品集的意义
-
-这个小工具适合放进 GitHub，不是因为它“技术很炫”，而是因为它展示了几项很重要的能力：
-
-### 16.1 你能把一个需求拆成可控阶段
-
-不是一把梭写完，而是能把请求、清洗、过滤、排序、输出拆成独立职责。
-
-### 16.2 你有结果对象意识
-
-这说明你在思考：
-
-- 程序如何报告成功/失败
-- 失败如何被解释
-- 如何把数据与诊断信息分开
-
-### 16.3 你有交付意识
-
-Excel、筛选、排序、执行摘要，这些都不是“炫技功能”，但它们很像真实客户真正会在意的细节。
-
-### 16.4 你在走“可扩展小工具”路线，而不是一次性脚本路线
-
-这对 Upwork 或自由职业作品集是有价值的，因为客户更容易相信：
-
-- 你不仅会写 demo
-- 你还能把 demo 推向可维护的实用工具
-
----
-
-## 17. 当前版本仍然刻意没有做的事
-
-从封存角度看，也要明确哪些事情是**有意不做**，而不是“不会做”。
-
-当前版本还没有涉及：
-
-- 命令行参数解析
-- 配置文件输入
-- 多工作表输出
-- 单元格样式美化
-- 日志文件落盘
-- 重试机制
-- 分页 API
-- 多接口聚合
-- 单元测试 / 集成测试
-
-这并不是缺点。
-
-相反，这说明当前项目的边界很清楚：
-
-它聚焦于完成一个**小而完整、结构正确、证据明确**的数据导出工具。
-
----
-
-## 18. 最终结论
-
-这次 Sprint 3 的技术补全，表面上是在做一个“网络请求转 Excel”的小程序，实际上完成的是一次很扎实的工程演化：
-
-- 从最小原型出发
-- 建立统一 Result 协议
-- 拆分阶段职责
-- 分离 data 与 evidence
-- 升级输出介质为 Excel
-- 引入过滤与排序规则
-- 提升到轻配置化
-- 最终形成执行证据链
-
-所以，这个项目最值得封存到 README 的地方，不是“它导出了 users.xlsx”，而是：
-
-**它展示了一条很清晰的工程化思路：把一个简单需求，逐步演化成一个可解释、可维护、可扩展的小型数据流水线。**
-
-这正是它作为 GitHub 作品集材料的价值所在。
+The focus is not complexity.
+The focus is practical delivery value, clear workflow boundaries, and reliable output.
